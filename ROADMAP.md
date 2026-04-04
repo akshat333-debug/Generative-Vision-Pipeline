@@ -12,5 +12,5 @@
   Employ LoRA weights configuration over base SD1.5 on Kaggle T4 GPUs, tuning it towards a custom specialized subset (art/medical).
 - [x] **Phase 5: Pipeline Integration (Task 6)**  
   Bring the CGAN, Custom SD model, and text processing module together into an expanded `Stable_Diffusion.ipynb` Gradio dashboard.
-- [ ] **Phase 6: Project Professionalization & Deployment**
+- [x] **Phase 6: Project Professionalization & Deployment**
   Generate a professional `README.md`, insert evaluation visuals, and push to GitHub repository.
