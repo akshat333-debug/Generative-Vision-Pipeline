@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-CGAN Training Script — Kaggle 2×T4 GPU
-=======================================
+CGAN Training Script — Kaggle 2×T4 GPU (with Resume)
+=====================================================
 Trains the Self-Attention Conditional GAN on synthetic shapes dataset.
 Pre-computes CLIP embeddings to avoid DataParallel issues with HF models.
+AUTO-RESUMES from latest checkpoint if found.
 
 Usage (from repo root):
-    python scripts/train_cgan_kaggle.py
+    python scripts/train_cgan_kaggle.py              # fresh or auto-resume
+    python scripts/train_cgan_kaggle.py --resume 50   # resume from epoch 50
 
 Outputs:
-    - cgan_generator.pth          (final weights)
-    - checkpoints/cgan_epoch_*.pth (periodic saves)
-    - samples/cgan_epoch_*.png     (visual progress)
+    - cgan_generator.pth                (final weights)
+    - checkpoints/cgan_state_*.pt       (full state: G + D + optimizers + epoch)
+    - samples/cgan_epoch_*.png          (visual progress)
 """
 
 import os
 import sys
 import time
+import glob
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,6 +31,7 @@ from torchvision import transforms
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import gc
 
 # Ensure repo modules are importable
 sys.path.insert(0, os.path.abspath('.'))
@@ -45,10 +50,10 @@ BETA1 = 0.5
 BETA2 = 0.999
 NUM_SAMPLES = 10000      # dataset size
 IMG_SIZE = 64
-CHECKPOINT_EVERY = 25    # save every N epochs
+CHECKPOINT_EVERY = 25    # save full state every N epochs
 SAMPLE_EVERY = 10        # generate sample grid every N epochs
-G_STEPS = 2              # train G this many times per D step (stabilizes training)
-LABEL_SMOOTH_REAL = 0.9  # label smoothing
+G_STEPS = 2              # train G this many times per D step
+LABEL_SMOOTH_REAL = 0.9
 LABEL_SMOOTH_FAKE = 0.1
 GRAD_CLIP = 1.0
 NUM_WORKERS = 2
@@ -72,7 +77,6 @@ class ShapesDataset(Dataset):
         print(f"Generating {num_samples} synthetic shape images...")
         self.data, self.label_indices = self._generate_data()
 
-        # Pre-compute CLIP embeddings for each label (only 3 unique embeddings)
         print("Pre-computing CLIP embeddings for labels...")
         self.label_embeddings = self._precompute_embeddings()
         print(f"Embedding shape per label: {self.label_embeddings[0].shape}")
@@ -94,7 +98,6 @@ class ShapesDataset(Dataset):
             img = Image.new('RGB', (self.img_size, self.img_size), color=(0, 0, 0))
             draw = ImageDraw.Draw(img)
 
-            # Randomize position slightly for variety
             cx, cy = self.img_size // 2, self.img_size // 2
             offset_x = np.random.randint(-5, 6)
             offset_y = np.random.randint(-5, 6)
@@ -120,19 +123,18 @@ class ShapesDataset(Dataset):
         return data, label_indices
 
     def _precompute_embeddings(self):
-        """Compute CLIP embeddings for each label string once."""
         from scripts.text_processing import TextEmbedder
-        embedder = TextEmbedder(device="cpu")  # CPU to avoid GPU memory issues during init
+        embedder = TextEmbedder(device="cpu")
 
         embeddings = {}
         for i, label in enumerate(self.labels):
-            # Get embedding and mean-pool over sequence length
-            emb = embedder.get_text_embeddings([label])  # (1, seq_len, 512)
-            emb = emb.mean(dim=1).squeeze(0)              # (512,)
+            emb = embedder.get_text_embeddings([label])
+            emb = emb.mean(dim=1).squeeze(0)
             embeddings[i] = emb.detach()
             print(f"  '{label}' -> embedding norm: {emb.norm():.4f}")
 
-        del embedder  # free memory
+        del embedder
+        gc.collect()
         return embeddings
 
     def __len__(self):
@@ -141,7 +143,7 @@ class ShapesDataset(Dataset):
     def __getitem__(self, idx):
         img = self.transform(self.data[idx])
         label_idx = self.label_indices[idx]
-        emb = self.label_embeddings[label_idx]  # pre-computed (512,)
+        emb = self.label_embeddings[label_idx]
         return img, emb, label_idx
 
 
@@ -159,7 +161,7 @@ def weights_init(m):
 
 
 # ============================================================================
-# Sample Generation for Visual Progress
+# Sample Generation
 # ============================================================================
 
 def generate_samples(netG, label_embeddings, labels, epoch, device, save_dir="samples"):
@@ -173,11 +175,7 @@ def generate_samples(netG, label_embeddings, labels, epoch, device, save_dir="sa
         for row, (label_idx, label_name) in enumerate(zip(range(3), labels)):
             emb = label_embeddings[label_idx].unsqueeze(0).repeat(6, 1).to(device)
             noise = torch.randn(6, Z_DIM, 1, 1, device=device)
-
-            if isinstance(netG, nn.DataParallel):
-                fake = netG.module(noise, emb)
-            else:
-                fake = netG(noise, emb)
+            fake = netG(noise, emb)
 
             for col in range(6):
                 img = ((fake[col].cpu().permute(1, 2, 0) + 1.0) / 2.0).clamp(0, 1).numpy()
@@ -193,10 +191,75 @@ def generate_samples(netG, label_embeddings, labels, epoch, device, save_dir="sa
 
 
 # ============================================================================
+# Checkpoint Save / Load
+# ============================================================================
+
+def save_checkpoint(epoch, netG, netD, optimizerG, optimizerD, g_losses, d_losses):
+    """Save FULL training state for resume."""
+    raw_G = netG.module if isinstance(netG, nn.DataParallel) else netG
+    raw_D = netD.module if isinstance(netD, nn.DataParallel) else netD
+
+    state = {
+        'epoch': epoch,
+        'netG_state_dict': raw_G.state_dict(),
+        'netD_state_dict': raw_D.state_dict(),
+        'optimizerG_state_dict': optimizerG.state_dict(),
+        'optimizerD_state_dict': optimizerD.state_dict(),
+        'g_losses': g_losses,
+        'd_losses': d_losses,
+    }
+
+    path = f"checkpoints/cgan_state_{epoch:04d}.pt"
+    torch.save(state, path)
+
+    # Also save standalone G weights (for inference)
+    torch.save(raw_G.state_dict(), "cgan_generator.pth")
+
+    return path
+
+
+def find_latest_checkpoint():
+    """Auto-detect latest checkpoint."""
+    pattern = "checkpoints/cgan_state_*.pt"
+    files = glob.glob(pattern)
+    if not files:
+        return None
+    # Sort by epoch number
+    files.sort(key=lambda f: int(f.split('_')[-1].split('.')[0]))
+    return files[-1]
+
+
+def load_checkpoint(path, netG, netD, optimizerG, optimizerD, device):
+    """Load full training state from checkpoint."""
+    print(f"Loading checkpoint: {path}")
+    state = torch.load(path, map_location=device)
+
+    raw_G = netG.module if isinstance(netG, nn.DataParallel) else netG
+    raw_D = netD.module if isinstance(netD, nn.DataParallel) else netD
+
+    raw_G.load_state_dict(state['netG_state_dict'])
+    raw_D.load_state_dict(state['netD_state_dict'])
+    optimizerG.load_state_dict(state['optimizerG_state_dict'])
+    optimizerD.load_state_dict(state['optimizerD_state_dict'])
+
+    epoch = state['epoch']
+    g_losses = state.get('g_losses', [])
+    d_losses = state.get('d_losses', [])
+
+    print(f"Resumed from epoch {epoch} (G_Loss: {g_losses[-1]:.4f}, D_Loss: {d_losses[-1]:.4f})")
+    return epoch, g_losses, d_losses
+
+
+# ============================================================================
 # MAIN TRAINING LOOP
 # ============================================================================
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--resume', type=int, default=-1,
+                        help='Resume from specific epoch (-1 = auto-detect)')
+    args = parser.parse_args()
+
     start_time = time.time()
 
     # Device setup
@@ -221,15 +284,38 @@ def main():
     netG.apply(weights_init)
     netD.apply(weights_init)
 
-    # Multi-GPU (DataParallel — safe since CLIP is already done)
+    # Optimizers (created BEFORE DataParallel wrapping and checkpoint loading)
+    optimizerG = torch.optim.Adam(netG.parameters(), lr=LR_G, betas=(BETA1, BETA2))
+    optimizerD = torch.optim.Adam(netD.parameters(), lr=LR_D, betas=(BETA1, BETA2))
+
+    # ─── Resume from checkpoint ───
+    start_epoch = 1
+    g_losses = []
+    d_losses = []
+
+    checkpoint_path = None
+    if args.resume > 0:
+        checkpoint_path = f"checkpoints/cgan_state_{args.resume:04d}.pt"
+        if not os.path.exists(checkpoint_path):
+            print(f"WARNING: Checkpoint {checkpoint_path} not found, starting fresh")
+            checkpoint_path = None
+    else:
+        # Auto-detect
+        checkpoint_path = find_latest_checkpoint()
+
+    if checkpoint_path:
+        start_epoch, g_losses, d_losses = load_checkpoint(
+            checkpoint_path, netG, netD, optimizerG, optimizerD, device
+        )
+        start_epoch += 1  # resume from NEXT epoch
+    else:
+        print("No checkpoint found — starting fresh training")
+
+    # Multi-GPU (AFTER checkpoint loading to avoid key mismatches)
     if num_gpus > 1:
         print(f"Wrapping models in DataParallel across {num_gpus} GPUs")
         netG = nn.DataParallel(netG)
         netD = nn.DataParallel(netD)
-
-    # Optimizers
-    optimizerG = torch.optim.Adam(netG.parameters(), lr=LR_G, betas=(BETA1, BETA2))
-    optimizerD = torch.optim.Adam(netD.parameters(), lr=LR_D, betas=(BETA1, BETA2))
 
     # Loss
     criterion = nn.BCELoss()
@@ -239,18 +325,14 @@ def main():
     os.makedirs("samples", exist_ok=True)
 
     print(f"\nTraining config:")
-    print(f"  Epochs: {EPOCHS} | Batch: {BATCH_SIZE} | LR: {LR_G}")
+    print(f"  Epochs: {start_epoch} → {EPOCHS} | Batch: {BATCH_SIZE} | LR: {LR_G}")
     print(f"  G steps per D step: {G_STEPS}")
     print(f"  Label smoothing: real={LABEL_SMOOTH_REAL}, fake={LABEL_SMOOTH_FAKE}")
     print(f"  Checkpoints every {CHECKPOINT_EVERY} epochs")
     print(f"\n{'='*60}")
     print("Starting training...\n")
 
-    # Track losses
-    g_losses = []
-    d_losses = []
-
-    for epoch in range(1, EPOCHS + 1):
+    for epoch in range(start_epoch, EPOCHS + 1):
         epoch_g_loss = 0.0
         epoch_d_loss = 0.0
         num_batches = 0
@@ -260,7 +342,6 @@ def main():
             embeddings = embeddings.to(device)
             b_size = real_imgs.size(0)
 
-            # Labels with smoothing
             real_labels = torch.full((b_size,), LABEL_SMOOTH_REAL, device=device)
             fake_labels = torch.full((b_size,), LABEL_SMOOTH_FAKE, device=device)
 
@@ -288,7 +369,7 @@ def main():
                 noise = torch.randn(b_size, Z_DIM, 1, 1, device=device)
                 fake_imgs = netG(noise, embeddings)
                 output = netD(fake_imgs, embeddings)
-                g_loss = criterion(output, real_labels)  # fool discriminator
+                g_loss = criterion(output, real_labels)
                 g_loss.backward()
                 torch.nn.utils.clip_grad_norm_(netG.parameters(), GRAD_CLIP)
                 optimizerG.step()
@@ -310,17 +391,26 @@ def main():
               f"Time: {elapsed/60:.1f}min")
 
         # Sample visualization
-        if epoch % SAMPLE_EVERY == 0 or epoch == 1:
+        if epoch % SAMPLE_EVERY == 0 or epoch == start_epoch:
             raw_G = netG.module if isinstance(netG, nn.DataParallel) else netG
             generate_samples(raw_G, dataset.label_embeddings, dataset.labels,
                            epoch, device)
             print(f"  → Saved sample grid: samples/cgan_epoch_{epoch:04d}.png")
 
-        # Checkpoint
+        # Full state checkpoint
         if epoch % CHECKPOINT_EVERY == 0:
-            raw_G = netG.module if isinstance(netG, nn.DataParallel) else netG
-            torch.save(raw_G.state_dict(), f"checkpoints/cgan_epoch_{epoch:04d}.pth")
-            print(f"  → Checkpoint saved: checkpoints/cgan_epoch_{epoch:04d}.pth")
+            raw_G_ref = netG.module if isinstance(netG, nn.DataParallel) else netG
+            raw_D_ref = netD.module if isinstance(netD, nn.DataParallel) else netD
+
+            # Temporarily unwrap for saving
+            save_checkpoint(epoch, netG, netD, optimizerG, optimizerD, g_losses, d_losses)
+            print(f"  → Full checkpoint: checkpoints/cgan_state_{epoch:04d}.pt")
+            print(f"  → Generator snapshot: cgan_generator.pth")
+
+        # Flush CUDA cache periodically to prevent hangs
+        if epoch % 10 == 0:
+            gc.collect()
+            torch.cuda.empty_cache()
 
     # ─── Save Final Model ───
     raw_G = netG.module if isinstance(netG, nn.DataParallel) else netG
