@@ -267,13 +267,12 @@ def main():
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
             # 4. UNet forward pass (LoRA active)
+            # return_dict=False gives plain tuple — avoids DataParallel + PEFT output issues
             noise_pred = unet(
                 noisy_latents, timesteps,
-                encoder_hidden_states=encoder_hidden_states
-            )
-            # Handle DataParallel returning named tuple
-            if hasattr(noise_pred, 'sample'):
-                noise_pred = noise_pred.sample
+                encoder_hidden_states=encoder_hidden_states,
+                return_dict=False,
+            )[0]  # first element is the noise prediction tensor
 
             # 5. Loss
             loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
