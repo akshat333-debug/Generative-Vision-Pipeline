@@ -23,8 +23,13 @@ class TextEmbedder:
             
         print(f"Loading tokenizer and text encoder: {model_id} on {self.device}")
         
+        # Disable SDPA to prevent CUDA misaligned address errors on certain architectures
+        import os
+        os.environ["TORCH_DISABLE_SDPA"] = "1"
+        
         self.tokenizer = CLIPTokenizer.from_pretrained(model_id)
-        self.text_model = CLIPTextModel.from_pretrained(model_id).to(self.device)
+        # Use explicit mapping to the device and specify float32 as a fallback
+        self.text_model = CLIPTextModel.from_pretrained(model_id, torch_dtype=torch.float32).to(self.device)
         self.text_model.eval()
         
     def tokenize_text(self, prompts: List[str]) -> dict:
