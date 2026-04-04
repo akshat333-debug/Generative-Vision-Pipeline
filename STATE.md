@@ -1,11 +1,12 @@
 # State Snapshot
 
-**Current Phase:** Phase 1 (Dataset Analysis)
-**Last Action:** GSD Core documents bootstrapped; preparing dataset visualization codebase.
+**Current Phase:** MISSION COMPLETE
+**Last Action:** Completed Phase 5 (Pipeline Integration). Validated Native Git mappings.
 
-## Technical Decisions
-- **Target OS/Hardware:** Kaggle T4 GPUs constraint mapped via the user. This means our implementation constraints for Phase 4 (FT) and Phase 3 (CGAN) will enforce standard lightweight parameters (e.g., small batch sizes, LoRA weights instead of full checkpoint training, float16 inference).
-- **CGAN Dataset:** Decided to build a custom minimal synthetic dataset generator for fundamental shapes (circles, squares, triangles) as there is no universal "simple shape text-to-image" reliable 100-sample dataset to quickly pretrain locally off-the-shelf. Saves downloading overhead and explicitly validates conditional GAN label conditioning correctly.
+## Finalized Architecture
+- **Unified Generator:** The `Stable_Diffusion.ipynb` Gradio App now supports radio button routing between the immense pre-trained diffusion arrays (`Stable Diffusion 1.5`, `Dreamshaper`) and our entirely custom PyTorch `cgan_attention.ConditionalGenerator`.
+- **End-to-End Pipeline:** Hugging Face `transformers` tokenization (`scripts/text_processing.py`) is intrinsically hardwired into the CGAN UI route, allowing users to type standard prompts that get dynamically cast to token strings and sent to the PyTorch `.generate()` forward passes. 
+- **Training Readouts:** `notebooks/` contains the full 4-stage pipeline (EDA, NLP Encoding experiments, PyTorch LoRA targeting, and PyTorch Local CGAN training matrices).
 
 ## Active Gaps
-- `notebooks/` directory does not yet exist. Needs instantiation alongside the first data exploration scripts.
+- None. GSD tracking confirms all Phase targets (internship tasks 1 through 6) successfully converted into physical software components and pushed.
