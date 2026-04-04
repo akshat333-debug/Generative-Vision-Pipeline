@@ -207,7 +207,7 @@ def main():
     print(f"{'='*60}")
     for i in range(num_gpus):
         print(f"  GPU {i}: {torch.cuda.get_device_name(i)} "
-              f"({torch.cuda.get_device_properties(i).total_mem / 1024**3:.1f} GB)")
+              f"({torch.cuda.get_device_properties(i).total_memory / 1024**3:.1f} GB)")
 
     # Dataset
     dataset = ShapesDataset(num_samples=NUM_SAMPLES, img_size=IMG_SIZE)
