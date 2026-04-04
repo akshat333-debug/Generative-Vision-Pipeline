@@ -1,9 +1,9 @@
-# 🚀 ANTIGRAVITY: Deep Generative Image Pipeline
+# 🚀 Imgen: Deep Generative Image Pipeline
 
 [![GitHub repo](https://img.shields.io/badge/GitHub-Repo-blue?logo=github)](https://github.com/akshat333-debug/ML-project)
 [![Python & PyTorch](https://img.shields.io/badge/Framework-PyTorch%20%7C%20Diffusers-red)](https://pytorch.org/)
 
-ANTIGRAVITY is a robust, dynamic end-to-end Text-to-Image Generation and Conditional GAN rendering pipeline designed specifically for professional AI execution and reproducible ML research. 
+Imgen is a robust, dynamic end-to-end Text-to-Image Generation and Conditional GAN rendering pipeline designed specifically for professional AI execution and reproducible ML research. 
 
 This repository was built targeting high efficiency (running constraints down to Kaggle T4 GPUs) while supporting complex image synthesis strategies including LoRA fine-tuning, cross-attention in local GANs, and HF Transformers-backed NLP pipelines.
 
