@@ -16,3 +16,5 @@
   Elevate Task 2's GAN architecture by injecting self-attention / cross-attention blocks.
 - **Task 6: Unified Pipeline UI**  
   Bind custom tuned SD + internal CGAN + text preprocessor into a single comprehensive Gradio UI.
+- **Task 7: Hosting and Documentation (Phase 6)**  
+  Upload to GitHub with a highly structured `README.md` (Problem Statement, Dataset, Methodology, Results) featuring model metrics, architectural comparisons, and embedded graphical plots for strict reproducibility and grading.
