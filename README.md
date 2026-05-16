@@ -1,83 +1,72 @@
-# 🚀 Imgen: Deep Generative Image Pipeline
+# Imgen: Deep Generative Image Pipeline
 
 [![GitHub repo](https://img.shields.io/badge/GitHub-Repo-blue?logo=github)](https://github.com/akshat333-debug/ML-project)
 [![Python & PyTorch](https://img.shields.io/badge/Framework-PyTorch%20%7C%20Diffusers-red)](https://pytorch.org/)
 
-Imgen is a robust, dynamic end-to-end Text-to-Image Generation and Conditional GAN rendering pipeline designed specifically for professional AI execution and reproducible ML research. 
+Imgen is an end-to-end Text-to-Image Generation and Conditional GAN rendering pipeline developed as part of an ML internship project. 
 
-This repository was built targeting high efficiency (running constraints down to Kaggle T4 GPUs) while supporting complex image synthesis strategies including LoRA fine-tuning, cross-attention in local GANs, and HF Transformers-backed NLP pipelines.
-
----
-
-## 📖 Problem Statement
-Standard diffusion models are exceptionally powerful but highly generalized, heavy, and difficult to isolate for edge-case deployment. Furthermore, many fundamental generative approaches (like standard CGANs) suffer in image quality due to a lack of structural understanding of contextual prompts.
-
-**Our Objective:** Create an extensible architecture capable of:
-1. Fine-tuning heavy foundational models (Stable Diffusion v1.5) via Low-Rank Adaptation (LoRA) for specialized domains.
-2. Developing from scratch a Conditional Generative Adversarial Network (CGAN) that uses state-of-the-art NLP representations (HuggingFace tokenizers).
-3. Utilizing self-attention mechanisms natively within the GAN generator to drastically improve shape and target coherence.
-4. Binding the entire array of models into a single, unified Gradio interface.
+The goal of this project was to build an efficient generative pipeline that can run on consumer hardware (like Kaggle T4 GPUs) while exploring image synthesis strategies including LoRA fine-tuning, cross-attention in GANs, and NLP preprocessing using HuggingFace Transformers.
 
 ---
 
-## 📊 Datasets & Analysis
+## Problem Statement
+Standard diffusion models are powerful but highly generalized and heavy. On the other hand, traditional GAN approaches often struggle with image quality and structural coherence when conditioned on text.
+
+This project aims to create a pipeline capable of:
+1. Fine-tuning foundational models (Stable Diffusion v1.5) via Low-Rank Adaptation (LoRA) for specialized domains.
+2. Developing a Conditional Generative Adversarial Network (CGAN) from scratch that uses NLP embeddings for condition tracking.
+3. Implementing self-attention mechanisms within the GAN generator to improve shape coherence.
+4. Integrating these models into a unified Gradio interface.
+
+---
+
+## Datasets & Analysis
 
 ### 1. Oxford-102 Flowers (EDA — Task 4)
-To establish analytical baselines, we performed heavy Exploratory Data Analysis (EDA) on the `Oxford-102` dataset. 
+I started by performing Exploratory Data Analysis (EDA) on the `Oxford-102` dataset to understand standard text-to-image dataset structures. 
 - **Methodology:** Text descriptions were matched with structural images. 
-- **Analysis Captured:** Description length distribution, image resolution clusters, and class-balance evaluation. 
+- **Analysis:** Looked at description length distribution, image resolution clusters, and class-balance. 
 - **Notebook:** [`01_Dataset_Analysis_Oxford102.ipynb`](./notebooks/01_Dataset_Analysis_Oxford102.ipynb)
 
-![Oxford-102 Flowers EDA — Class distribution, resolution scatter, caption length analysis, and dataset statistics](./assets/eda_flowers_analysis.png)
+![Oxford-102 Flowers EDA](./assets/eda_flowers_analysis.png)
 
 ### 2. Custom Shapes Synthetic Dataset
-For our CGAN, we utilized a synthetic dataset targeting primitive label generation: `circles`, `squares`, and `triangles` embedded directly against one-hot labels. Generated procedurally using PIL with parametric geometry (25,000 samples at 64×64 resolution).
+For the CGAN, I generated a synthetic dataset targeting primitive shapes: circles, squares, and triangles. This was done procedurally using PIL (25,000 samples at 64×64 resolution) to test the GAN's ability to learn distinct geometric features.
 
-### 3. Specialized Fine-Tuning Corpus (Art/Medical)
-Stable Diffusion LoRA models were trained on the `svjack/pokemon-blip-captions-en-zh` dataset — a specialized, narrow sub-domain artwork corpus — to forcefully shift the `.unet` style without destroying zero-shot capabilities.
+### 3. Specialized Fine-Tuning Corpus
+Stable Diffusion LoRA models were trained on the `svjack/pokemon-blip-captions-en-zh` dataset to shift the model's style towards a specific artwork domain without destroying its zero-shot capabilities.
 
 ---
 
-## 🛠️ Architecture & Methodology
-
-Our execution spans three major pillars:
+## Architecture & Methodology
 
 ### A. Preprocessing & Feature Engineering (Task 3)
 - **Script:** [`scripts/text_processing.py`](./scripts/text_processing.py)
-- **Execution:** Uses `transformers` (OpenAI CLIP `clip-vit-base-patch32`) to preprocess raw string prompts into tokenized, embedded encoded representations. The `TextEmbedder` class provides:
-  - `tokenize_text()` — Converts strings to `input_ids` + `attention_mask`
-  - `get_text_embeddings()` — Returns `last_hidden_state` tensors for cross-attention conditioning
-- **Output Shape:** `(batch, sequence_length, 512)` — fed directly into CGAN conditioning or SD pipeline
+- **Details:** Uses `transformers` (OpenAI CLIP `clip-vit-base-patch32`) to preprocess raw text prompts into embedded representations. The `TextEmbedder` class tokenizes strings and extracts the `last_hidden_state` tensors for cross-attention conditioning in the CGAN.
 
 ### B. Stable Diffusion Fine-Tuning via LoRA (Task 1)
 - **Notebook:** [`04_FineTune_LoRA_SD15.ipynb`](./notebooks/04_FineTune_LoRA_SD15.ipynb)
-- **Execution:** To keep memory sub-16GB (Kaggle T4), we sliced attention and injected Low-Rank Adaptation (PEFT).
+- **Details:** To fit within a 16GB memory constraint, I used attention slicing and Low-Rank Adaptation (PEFT). 
 - **Hyperparameters:**
-  | Parameter | Value |
-  |-----------|-------|
-  | Base Model | `runwayml/stable-diffusion-v1-5` |
-  | LoRA Rank (r) | 8 |
-  | LoRA Alpha | 32 |
-  | Target Modules | `to_q`, `to_v` (cross-attention projections) |
-  | Dropout | 0.0 |
-  | Optimizer | AdamW (lr=1e-4) |
-  | Precision | FP16 mixed |
-  | Dataset | `svjack/pokemon-blip-captions-en-zh` |
+  - Base Model: `runwayml/stable-diffusion-v1-5`
+  - LoRA Rank (r): 8
+  - Target Modules: `to_q`, `to_v`
+  - Optimizer: AdamW (lr=1e-4)
+  - Dataset: `svjack/pokemon-blip-captions-en-zh`
 
 ### C. Self-Attention Generative Adversarial Network — CGAN (Tasks 2 & 5)
 - **Architecture Source:** [`models/cgan_attention.py`](./models/cgan_attention.py)
-- **Key Innovation:** SAGAN-style Self-Attention blocks injected into both Generator (after 16×16 layer) and Discriminator (after 32×32 layer) with a learnable γ scale parameter (initialized at 0).
-- **Conditioning:** CLIP text embeddings are mean-pooled and projected through a 768→256 linear layer before concatenation with the noise vector Z.
-- **Training:** 1000 epochs, batch size 32, Adam (lr=0.0002, β₁=0.5, β₂=0.999), BCE loss.
+- **Details:** Injected SAGAN-style Self-Attention blocks into both the Generator and Discriminator with a learnable gamma scale parameter. CLIP text embeddings are mean-pooled and projected through a linear layer before concatenating with the noise vector.
+- **Training:** 200 epochs, batch size 64, Adam optimizer, BCE loss.
 
 ---
 
-## 📈 Results & Visual Outputs
+## Results & Evaluation
 
 ### Baseline vs. Advanced CGAN Evaluation
-Our metrics indicated substantial improvement when adopting self/cross-attention over vanilla convolutional generation.
+Adding self-attention over vanilla convolutions resulted in noticeably cleaner shapes.
 
-![Model Evaluation — Training loss curves, architecture comparison table, and generated sample quality for Baseline DCGAN vs Self-Attention CGAN](./assets/cgan_model_comparison.png)
+![Model Evaluation](./assets/cgan_model_comparison.png)
 
 **Key Findings:**
 | Metric | Baseline DCGAN | SA-CGAN (Ours) | Improvement |
@@ -88,15 +77,13 @@ Our metrics indicated substantial improvement when adopting self/cross-attention
 | Shape Coherence | Noisy edges | Clean geometry | Significant |
 
 ### Gradio Interface
-We built a dynamic unified pipeline wrapper to interface all models live:
+I built a pipeline wrapper to interface with all models locally:
 
-![Unified Gradio Pipeline UI — Showing engine selection, model configuration, prompt input, and session gallery](./assets/gradio_unified_ui.png)
+![Unified Gradio Pipeline UI](./assets/gradio_unified_ui.png)
 
 ---
 
-## 💻 How to Run (Reproducibility)
-
-The code is strictly commented, modularized, and designed for clean reproduction.
+## How to Run
 
 1. **Clone the repository:**
    ```bash
@@ -114,60 +101,34 @@ The code is strictly commented, modularized, and designed for clean reproduction
    ```bash
    python Stable_Diffusion.py
    ```
-   *Alternatively, run through `Stable_Diffusion.ipynb` to evaluate via Jupyter (Kaggle/Colab recommended).*
 
 4. **Run Individual Notebooks:**
-   ```bash
-   # EDA Analysis (Task 4)
-   jupyter notebook notebooks/01_Dataset_Analysis_Oxford102.ipynb
-
-   # Text Embedding Demo (Task 3)
-   jupyter notebook notebooks/02_Text_Embeddings.ipynb
-
-   # CGAN Training (Tasks 2 & 5)
-   jupyter notebook notebooks/03_CGAN_Shapes.ipynb
-
-   # LoRA Fine-Tuning (Task 1)
-   jupyter notebook notebooks/04_FineTune_LoRA_SD15.ipynb
-   ```
+   Explore the `notebooks/` directory to see the EDA, text embedding demos, and training scripts.
 
 ---
 
-## 📂 Repository Structure
+## Repository Structure
 
-```
+```text
 ML-project/
 ├── Stable_Diffusion.py          # Unified Pipeline UI (Task 6)
 ├── Stable_Diffusion.ipynb       # Jupyter version of the pipeline
-├── requirements.txt             # All Python dependencies
-│
+├── requirements.txt             # Project dependencies
 ├── models/
 │   └── cgan_attention.py        # Self-Attention CGAN architecture (Tasks 2 & 5)
-│
 ├── scripts/
-│   └── text_processing.py       # CLIP Text Embedding module (Task 3)
-│
-├── notebooks/
-│   ├── 01_Dataset_Analysis_Oxford102.ipynb   # EDA on Oxford-102 (Task 4)
-│   ├── 02_Text_Embeddings.ipynb             # NLP embedding demo (Task 3)
-│   ├── 03_CGAN_Shapes.ipynb                 # CGAN training pipeline (Tasks 2 & 5)
-│   └── 04_FineTune_LoRA_SD15.ipynb          # LoRA fine-tuning (Task 1)
-│
+│   ├── text_processing.py       # CLIP Text Embedding module (Task 3)
+│   ├── train_cgan_kaggle.py     # CGAN training script
+│   └── train_lora_kaggle.py     # LoRA fine-tuning script
+├── notebooks/                   # Project notebooks for Tasks 1-5
 ├── lora_unet_weights/           # Saved LoRA adapter weights
-│   ├── adapter_config.json
-│   └── adapter_model.safetensors
-│
 ├── cgan_generator.pth           # Trained CGAN generator weights
-│
 └── assets/                      # Evaluation plots and visualizations
-    ├── eda_flowers_analysis.png
-    ├── cgan_model_comparison.png
-    └── gradio_unified_ui.png
 ```
 
 ---
 
-## 🔗 Task Mapping
+## Task Mapping
 
 | # | Task Description | Implementation | Files |
 |---|-----------------|----------------|-------|

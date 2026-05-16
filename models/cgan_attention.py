@@ -6,7 +6,6 @@ class SelfAttention(nn.Module):
     """
     Self-Attention module for GAN architecture (SAGAN implementation mapping).
     Allows the model to focus on pertinent spatial areas of the image.
-    Fulfills Internship Task 5.
     """
     def __init__(self, in_channels):
         super(SelfAttention, self).__init__()
@@ -42,7 +41,6 @@ class SelfAttention(nn.Module):
 class ConditionalGenerator(nn.Module):
     """
     Conditional Generator (CGAN). Maps textual embeddings + latent noise Z to visuals.
-    Fulfills Internship Task 2 natively.
     """
     def __init__(self, z_dim=100, embed_dim=768, feature_maps=64, out_channels=3):
         super(ConditionalGenerator, self).__init__()
@@ -159,6 +157,6 @@ if __name__ == "__main__":
     _gen = G(_noise, _embed)
     _prob = D(_gen, _embed)
     
-    print("Self Attention CGAN verified -> Build stable architecture mappings.")
+    print("Self Attention CGAN verified")
     print(f"Generator output shape: {_gen.shape}")
     print(f"Discriminator prob mapping: {_prob.shape}")

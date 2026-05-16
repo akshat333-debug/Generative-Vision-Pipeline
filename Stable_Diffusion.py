@@ -1,14 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
-# ============================================================================
-# ANTIGRAVITY: Comprehensive Hybrid Text-to-Image Pipeline (Task 6)
-# ============================================================================
-# This file integrates:
-#   - Stable Diffusion (HuggingFace Diffusers) with LoRA weight injection
-#   - Custom Self-Attention CGAN (models/cgan_attention.py)
-#   - NLP Text Preprocessing (scripts/text_processing.py)
-# Into a single unified Gradio interface.
-# ============================================================================
+# Comprehensive Text-to-Image Pipeline (Task 6)
+# Integrates Stable Diffusion with LoRA and a Custom Self-Attention CGAN
+# using a Gradio interface.
 
 # Colab Environment Setup
 import os
@@ -44,9 +38,7 @@ import gradio as gr
 torch.backends.cuda.matmul.allow_tf32 = True
 
 
-# ============================================================================
 # Core Stable Diffusion Generator Engine
-# ============================================================================
 
 class StableDiffusionGenerator:
     """
@@ -82,9 +74,7 @@ class StableDiffusionGenerator:
             print(f"❌ Initialization Error: {str(e)}")
             raise
 
-    # ==========================
     # Device Setup
-    # ==========================
     def _setup_device(self, device: str) -> torch.device:
         if device == "auto":
             if torch.cuda.is_available():
@@ -96,9 +86,7 @@ class StableDiffusionGenerator:
                 print("💻 Using CPU")
         return torch.device(device)
 
-    # ==========================
     # Load Pipeline
-    # ==========================
     def _load_pipeline(self, model_id: str) -> StableDiffusionPipeline:
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
@@ -134,9 +122,7 @@ class StableDiffusionGenerator:
 
         return pipe
 
-    # ==========================
-    # Scheduler
-    # ==========================
+    # Scheduler Setup
     def set_scheduler(self, scheduler_name: str) -> bool:
         if scheduler_name not in self.schedulers:
             print(f"❌ Unknown scheduler: {scheduler_name}")
@@ -165,9 +151,7 @@ class StableDiffusionGenerator:
             print(f"❌ Scheduler Error: {e}")
             return False
 
-    # ==========================
     # Generate Image
-    # ==========================
     def generate_image(
         self,
         prompt: str,
@@ -258,17 +242,13 @@ class StableDiffusionGenerator:
         finally:
             self._cleanup_memory()
 
-    # ==========================
-    # Cleanup
-    # ==========================
+    # Cleanup Memory
     def _cleanup_memory(self):
         gc.collect()
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
 
-    # ==========================
-    # Memory Stats
-    # ==========================
+    # Get Memory Stats
     def get_memory_usage(self) -> dict:
         if self.device.type == "cuda":
             return {
@@ -279,9 +259,7 @@ class StableDiffusionGenerator:
             }
         return {"device": "cpu"}
 
-    # ==========================
     # Save Images
-    # ==========================
     def save_images(self, images, metadata, output_dir="outputs"):
         os.makedirs(output_dir, exist_ok=True)
 
@@ -298,14 +276,8 @@ class StableDiffusionGenerator:
         return paths
 
 
-# ============================================================================
-# Unified Integrated Pipeline UI (Task 6)
-# ============================================================================
-# Combines:
-#   - Stable Diffusion (with LoRA fine-tuned weights from Task 1)
-#   - Custom Self-Attention CGAN (Tasks 2 & 5)
-#   - NLP Text Embeddings (Task 3)
-# ============================================================================
+# Unified Gradio Pipeline UI
+# Combines SD with CGAN and NLP text embeddings
 
 import torchvision.transforms as T
 
@@ -496,9 +468,7 @@ class IntegratedGeneratorUI:
         return interface
 
 
-# ============================================================================
-# Launch
-# ============================================================================
+# Application Entry Point
 
 if __name__ == "__main__":
     ui = IntegratedGeneratorUI()

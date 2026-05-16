@@ -4,12 +4,8 @@ from typing import List, Tuple
 
 class TextEmbedder:
     """
-    A unified software module to preprocess text descriptions into
-    tokenized and encoded representations.
-    
-    This fulfills Task 3 by utilizing Hugging Face Transformers.
-    By default, it uses the OpenAI CLIP model which is standard for 
-    Stable Diffusion implementations.
+    A software module to preprocess text descriptions into tokenized and encoded representations.
+    Uses Hugging Face Transformers (OpenAI CLIP) to generate text embeddings.
     """
     
     def __init__(self, model_id: str = "openai/clip-vit-base-patch32", device: str = None):

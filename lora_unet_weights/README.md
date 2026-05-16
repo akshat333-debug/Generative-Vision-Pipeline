@@ -1,53 +1,43 @@
 ---
+license: creativeml-openrail-m
 base_model: runwayml/stable-diffusion-v1-5
-library_name: peft
 tags:
+- stable-diffusion
+- stable-diffusion-diffusers
+- text-to-image
+- diffusers
 - lora
+inference: true
 ---
 
-# LoRA Fine-Tuned UNet Weights — ANTIGRAVITY Pipeline
+# LoRA Fine-Tuning - Stable Diffusion 1.5
 
-## Model Details
+These are LoRA adaptation weights for `runwayml/stable-diffusion-v1-5`. The weights were fine-tuned on the `svjack/pokemon-blip-captions-en-zh` dataset to generate domain-specific visuals.
 
-This adapter contains Low-Rank Adaptation (LoRA) weights fine-tuned on top of `runwayml/stable-diffusion-v1-5` UNet for domain-specific image generation.
+## Intended uses & limitations
+You can use this LoRA in the `diffusers` library to generate stylized Pokémon-like images. It is not intended for realistic image generation.
 
-- **Developed by:** Akshat Agrawal
-- **Model type:** LoRA adapter for UNet2DConditionModel  
-- **Base Model:** `runwayml/stable-diffusion-v1-5`
-- **Fine-tuned on:** `svjack/pokemon-blip-captions-en-zh` (stylized artwork sprites with BLIP captions)
-- **Framework:** PEFT 0.18.1 + Diffusers + PyTorch
+## Training details
+This model was trained as part of an ML internship project exploring text-to-image pipeline generation.
 
-## Training Hyperparameters
-
-| Parameter | Value |
-|-----------|-------|
-| LoRA Rank (r) | 8 |
-| LoRA Alpha | 32 |
-| Target Modules | `to_q`, `to_v` (cross-attention projections) |
-| LoRA Dropout | 0.0 |
-| Bias | none |
-| Training Precision | FP16 mixed |
-| Optimizer | AdamW (lr=1e-4) |
-| Hardware | Kaggle T4 GPU (16GB VRAM) |
-| Noise Scheduler | DDPMScheduler |
-| Image Resolution | 512×512 |
-| VAE Scaling | Standard latent scaling factor |
+- **Base Model**: runwayml/stable-diffusion-v1-5
+- **Dataset**: svjack/pokemon-blip-captions-en-zh
+- **Rank (r)**: 8
+- **Alpha**: 32
+- **Target Modules**: `to_q`, `to_v`
+- **Learning Rate**: 1e-4 with cosine decay
+- **Batch Size (effective)**: 8
+- **Epochs**: 30
 
 ## Usage
-
 ```python
 from diffusers import StableDiffusionPipeline
+import torch
 
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipe.load_lora_weights("lora_unet_weights", weight_name="adapter_model.safetensors")
-pipe = pipe.to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline.load_lora_weights("./lora_unet_weights")
+pipeline.to("cuda")
+
+image = pipeline("A cute fire-type pokemon").images[0]
+image.save("pokemon.png")
 ```
-
-## Files
-
-- `adapter_config.json` — PEFT LoRA configuration
-- `adapter_model.safetensors` — Trained weight deltas (~3.2MB)
-
-### Framework versions
-
-- PEFT 0.18.1

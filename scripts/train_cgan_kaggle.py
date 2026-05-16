@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CGAN Training Script — Kaggle 2×T4 GPU (with Resume)
-=====================================================
+
 Trains the Self-Attention Conditional GAN on synthetic shapes dataset.
 Pre-computes CLIP embeddings to avoid DataParallel issues with HF models.
 AUTO-RESUMES from latest checkpoint if found.
@@ -37,9 +37,7 @@ import gc
 sys.path.insert(0, os.path.abspath('.'))
 from models.cgan_attention import ConditionalGenerator, ConditionalDiscriminator
 
-# ============================================================================
-# CONFIG
-# ============================================================================
+# Configuration
 EPOCHS = 200
 BATCH_SIZE = 64          # 32 per GPU with 2 GPUs
 Z_DIM = 100
@@ -58,9 +56,7 @@ LABEL_SMOOTH_FAKE = 0.1
 GRAD_CLIP = 1.0
 NUM_WORKERS = 2
 
-# ============================================================================
 # Dataset — Synthetic Shapes with Pre-computed Embeddings
-# ============================================================================
 
 class ShapesDataset(Dataset):
     """Generates circle/square/triangle images with pre-computed CLIP embeddings."""
@@ -147,9 +143,7 @@ class ShapesDataset(Dataset):
         return img, emb, label_idx
 
 
-# ============================================================================
 # Weight Initialization
-# ============================================================================
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -160,9 +154,7 @@ def weights_init(m):
         nn.init.constant_(m.bias.data, 0)
 
 
-# ============================================================================
 # Sample Generation
-# ============================================================================
 
 def generate_samples(netG, label_embeddings, labels, epoch, device, save_dir="samples"):
     os.makedirs(save_dir, exist_ok=True)
@@ -190,9 +182,7 @@ def generate_samples(netG, label_embeddings, labels, epoch, device, save_dir="sa
     netG.train()
 
 
-# ============================================================================
 # Checkpoint Save / Load
-# ============================================================================
 
 def save_checkpoint(epoch, netG, netD, optimizerG, optimizerD, g_losses, d_losses):
     """Save FULL training state for resume."""
@@ -250,9 +240,7 @@ def load_checkpoint(path, netG, netD, optimizerG, optimizerD, device):
     return epoch, g_losses, d_losses
 
 
-# ============================================================================
-# MAIN TRAINING LOOP
-# ============================================================================
+# Main Training Loop
 
 def main():
     parser = argparse.ArgumentParser()

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 LoRA Fine-Tuning Script — Kaggle 2×T4 GPU
-==========================================
 Fine-tunes Stable Diffusion 1.5 UNet via LoRA on a domain-specific dataset.
 Uses DataParallel for multi-GPU and gradient accumulation for effective batching.
 
@@ -27,9 +26,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# ============================================================================
-# CONFIG
-# ============================================================================
+# Configuration
 MODEL_ID = "runwayml/stable-diffusion-v1-5"
 DATASET_ID = "svjack/pokemon-blip-captions-en-zh"
 TEXT_COLUMN = "en_text"
@@ -58,9 +55,7 @@ SAMPLE_PROMPTS = [
     "a yellow electric pokemon with lightning bolts",
 ]
 
-# ============================================================================
 # Dataset Wrapper
-# ============================================================================
 
 class TextImageDataset(Dataset):
     """Wraps a HuggingFace dataset for training."""
@@ -81,9 +76,7 @@ class TextImageDataset(Dataset):
         return {"pixel_values": image, "text": text}
 
 
-# ============================================================================
 # Generate Inference Samples
-# ============================================================================
 
 def generate_inference_samples(pipe, step, prompts, save_dir="samples"):
     """Generate images with current LoRA weights for visual progress."""
@@ -115,9 +108,7 @@ def generate_inference_samples(pipe, step, prompts, save_dir="samples"):
     torch.cuda.empty_cache()
 
 
-# ============================================================================
-# MAIN TRAINING
-# ============================================================================
+# Main Training Loop
 
 def main():
     start_time = time.time()
@@ -125,9 +116,7 @@ def main():
     # ─── GPU Setup ───
     num_gpus = torch.cuda.device_count()
     device = torch.device("cuda")
-    print(f"\n{'='*60}")
-    print(f"LoRA FINE-TUNING — {num_gpus} GPU(s)")
-    print(f"{'='*60}")
+    print(f"\nLoRA FINE-TUNING — {num_gpus} GPU(s)")
     for i in range(num_gpus):
         name = torch.cuda.get_device_name(i)
         mem = torch.cuda.get_device_properties(i).total_memory / 1024**3
@@ -226,7 +215,6 @@ def main():
     print(f"  Epochs: {EPOCHS} | Steps/epoch: {steps_per_epoch}")
     print(f"  LR: {LEARNING_RATE} (cosine decay) | Weight decay: {WEIGHT_DECAY}")
     print(f"  LoRA: r={LORA_RANK}, alpha={LORA_ALPHA}, targets={LORA_TARGET_MODULES}")
-    print(f"\n{'='*60}")
     print("Starting training...\n")
 
     # ─── Training Loop ───
@@ -314,8 +302,7 @@ def main():
     # ─── Save Final Weights ───
     raw_unet = unet.module if isinstance(unet, torch.nn.DataParallel) else unet
     raw_unet.save_pretrained(SAVE_DIR)
-    print(f"\n{'='*60}")
-    print(f"Training complete! LoRA weights saved to: {SAVE_DIR}/")
+    print(f"\nTraining complete! LoRA weights saved to: {SAVE_DIR}/")
     print(f"Total steps: {global_step} | Total time: {(time.time()-start_time)/60:.1f} min")
 
     # Generate final inference samples
