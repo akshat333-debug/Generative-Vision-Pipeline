@@ -7,7 +7,6 @@ accelerate
 peft
 safetensors
 gradio
-xformers
 matplotlib
 seaborn
 pandas
