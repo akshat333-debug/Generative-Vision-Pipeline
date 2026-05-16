@@ -3,9 +3,6 @@ base_model: runwayml/stable-diffusion-v1-5
 library_name: peft
 tags:
 - lora
-- stable-diffusion
-- text-to-image
-- fine-tuning
 ---
 
 # LoRA Fine-Tuned UNet Weights — ANTIGRAVITY Pipeline
