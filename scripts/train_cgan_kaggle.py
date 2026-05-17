@@ -124,10 +124,9 @@ class ShapesDataset(Dataset):
 
         embeddings = {}
         for i, label in enumerate(self.labels):
-            emb = embedder.get_text_embeddings([label])
-            emb = emb.mean(dim=1).squeeze(0)
+            emb = embedder.get_text_embeddings([label]).squeeze(0) # Keep SeqLen x EmbedDim
             embeddings[i] = emb.detach()
-            print(f"  '{label}' -> embedding norm: {emb.norm():.4f}")
+            print(f"  '{label}' -> embedding sequence shape: {emb.shape}")
 
         del embedder
         gc.collect()

@@ -38,242 +38,8 @@ import gradio as gr
 torch.backends.cuda.matmul.allow_tf32 = True
 
 
-# Core Stable Diffusion Generator Engine
-
-class StableDiffusionGenerator:
-    """
-    Wraps HuggingFace Diffusers StableDiffusionPipeline with memory-optimized
-    loading, scheduler swapping, and batch generation support.
-    """
-
-    def __init__(self, model_id: str = "runwayml/stable-diffusion-v1-5", device: str = "auto"):
-        try:
-            self.device = self._setup_device(device)
-            self.dtype = torch.float16 if self.device.type == "cuda" else torch.float32
-
-            print(f"🚀 Initializing Stable Diffusion on {self.device}")
-            print(f"📊 Using precision: {self.dtype}")
-
-            print(f"📦 PyTorch version: {version('torch')}")
-            print(f"📦 Diffusers version: {version('diffusers')}")
-
-            self.pipe = self._load_pipeline(model_id)
-
-            self.current_scheduler = "euler_a"
-            self.schedulers = {
-                "euler_a": ("Euler Ancestral", "Fast, creative"),
-                "euler": ("Euler", "Deterministic"),
-                "ddim": ("DDIM", "Classic"),
-                "dpm_solver": ("DPM Solver", "High quality"),
-                "lms": ("LMS", "Stable")
-            }
-
-            print("✅ Stable Diffusion Generator Ready!")
-
-        except Exception as e:
-            print(f"❌ Initialization Error: {str(e)}")
-            raise
-
-    # Device Setup
-    def _setup_device(self, device: str) -> torch.device:
-        if device == "auto":
-            if torch.cuda.is_available():
-                device = "cuda"
-                print(f"🎯 GPU: {torch.cuda.get_device_name(0)}")
-                print(f"💾 VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f}GB")
-            else:
-                device = "cpu"
-                print("💻 Using CPU")
-        return torch.device(device)
-
-    # Load Pipeline
-    def _load_pipeline(self, model_id: str) -> StableDiffusionPipeline:
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id,
-            torch_dtype=self.dtype,
-            safety_checker=None,
-            requires_safety_checker=False,
-        )
-
-        print("🔧 Applying optimizations...")
-
-        pipe.enable_attention_slicing()
-        pipe.enable_vae_slicing()
-
-        try:
-            pipe.enable_xformers_memory_efficient_attention()
-            print("✓ xFormers enabled")
-        except Exception:
-            print("⚠ xFormers not available")
-
-        if self.device.type == "cuda":
-            try:
-                pipe = pipe.to(self.device)
-                print("✓ Loaded on GPU")
-
-                # Performance boost
-                pipe.unet = torch.compile(pipe.unet)
-
-            except RuntimeError:
-                print("⚠ VRAM low → CPU offload")
-                pipe.enable_model_cpu_offload()
-        else:
-            pipe.enable_sequential_cpu_offload()
-
-        return pipe
-
-    # Scheduler Setup
-    def set_scheduler(self, scheduler_name: str) -> bool:
-        if scheduler_name not in self.schedulers:
-            print(f"❌ Unknown scheduler: {scheduler_name}")
-            return False
-
-        if scheduler_name == self.current_scheduler:
-            return True
-
-        scheduler_map = {
-            "euler_a": EulerAncestralDiscreteScheduler,
-            "euler": EulerDiscreteScheduler,
-            "ddim": DDIMScheduler,
-            "dpm_solver": DPMSolverMultistepScheduler,
-            "lms": LMSDiscreteScheduler
-        }
-
-        try:
-            scheduler_class = scheduler_map[scheduler_name]
-            self.pipe.scheduler = scheduler_class.from_config(self.pipe.scheduler.config)
-
-            self.current_scheduler = scheduler_name
-            print(f"🔄 Scheduler → {scheduler_name}")
-            return True
-
-        except Exception as e:
-            print(f"❌ Scheduler Error: {e}")
-            return False
-
-    # Generate Image
-    def generate_image(
-        self,
-        prompt: str,
-        negative_prompt: str = "",
-        width: int = 512,
-        height: int = 512,
-        num_inference_steps: int = 20,
-        guidance_scale: float = 7.5,
-        seed: Optional[int] = None,
-        scheduler: str = "euler_a",
-        num_images: int = 1
-    ) -> Tuple[list, dict]:
-
-        prompt = prompt or ""
-        negative_prompt = negative_prompt or ""
-
-        if not prompt.strip():
-            raise ValueError("Prompt cannot be empty")
-
-        if scheduler != self.current_scheduler:
-            self.set_scheduler(scheduler)
-
-        if seed is None:
-            seed = torch.randint(0, 2**32, (1,)).item()
-
-        generator = torch.Generator(device=self.device.type).manual_seed(seed)
-
-        width = (width // 8) * 8
-        height = (height // 8) * 8
-
-        print(f"\n🎨 Prompt: {prompt}")
-        print(f"📏 {width}x{height} | Steps: {num_inference_steps} | CFG: {guidance_scale}")
-        print(f"🎲 Seed: {seed} | Scheduler: {scheduler}")
-
-        start_time = time.time()
-
-        try:
-            with torch.inference_mode():
-
-                if self.device.type == "cuda":
-                    with autocast("cuda"):
-                        result = self.pipe(
-                            prompt=prompt,
-                            negative_prompt=negative_prompt,
-                            width=width,
-                            height=height,
-                            num_inference_steps=num_inference_steps,
-                            guidance_scale=guidance_scale,
-                            generator=generator,
-                            num_images_per_prompt=num_images
-                        )
-                else:
-                    result = self.pipe(
-                        prompt=prompt,
-                        negative_prompt=negative_prompt,
-                        width=width,
-                        height=height,
-                        num_inference_steps=num_inference_steps,
-                        guidance_scale=guidance_scale,
-                        generator=generator,
-                        num_images_per_prompt=num_images
-                    )
-
-            generation_time = time.time() - start_time
-
-            metadata = {
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "width": width,
-                "height": height,
-                "steps": num_inference_steps,
-                "guidance_scale": guidance_scale,
-                "scheduler": scheduler,
-                "seed": seed,
-                "generation_time": round(generation_time, 2),
-                "device": str(self.device),
-                "dtype": str(self.dtype)
-            }
-
-            print(f"✅ Generated in {generation_time:.2f}s")
-
-            return result.images, metadata
-
-        except torch.cuda.OutOfMemoryError:
-            self._cleanup_memory()
-            raise RuntimeError("❌ GPU OOM → reduce size or steps")
-
-        finally:
-            self._cleanup_memory()
-
-    # Cleanup Memory
-    def _cleanup_memory(self):
-        gc.collect()
-        if self.device.type == "cuda":
-            torch.cuda.empty_cache()
-
-    # Get Memory Stats
-    def get_memory_usage(self) -> dict:
-        if self.device.type == "cuda":
-            return {
-                "allocated_gb": torch.cuda.memory_allocated() / 1024**3,
-                "reserved_gb": torch.cuda.memory_reserved() / 1024**3,
-                "max_allocated_gb": torch.cuda.max_memory_allocated() / 1024**3,
-                "total_gb": torch.cuda.get_device_properties(0).total_memory / 1024**3
-            }
-        return {"device": "cpu"}
-
-    # Save Images
-    def save_images(self, images, metadata, output_dir="outputs"):
-        os.makedirs(output_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        paths = []
-
-        for i, image in enumerate(images):
-            filename = f"sd_{timestamp}_{i}.png"
-            filepath = os.path.join(output_dir, filename)
-            image.save(filepath)
-            paths.append(filepath)
-
-        print(f"💾 Saved {len(paths)} images")
-        return paths
+# Removed old standalone generators in favor of core_pipeline.py 
+# to satisfy Task 6 (Unified End-to-End Pipeline)
 
 
 # Unified Gradio Pipeline UI
@@ -285,48 +51,37 @@ import torchvision.transforms as T
 sys.path.append(os.path.abspath('.'))
 
 try:
-    from scripts.text_processing import TextEmbedder
-    from models.cgan_attention import ConditionalGenerator
-    CGAN_AVAILABLE = True
+    from core_pipeline import HybridGenerativePipeline
+    PIPELINE_AVAILABLE = True
 except Exception as e:
-    print("Integration Warning: modules not instantly reachable, skipping CGAN block load. Error:", e)
-    CGAN_AVAILABLE = False
+    print("Integration Warning: core_pipeline.py not instantly reachable. Error:", e)
+    PIPELINE_AVAILABLE = False
 
 
 class IntegratedGeneratorUI:
     """
-    Unified Gradio interface that routes between:
-      - Stable Diffusion (HuggingFace) with optional LoRA weight injection
-      - Custom Self-Attention CGAN with CLIP text embedding conditioning
+    Unified Gradio interface that acts simply as a UI wrapper around the 
+    core_pipeline.HybridGenerativePipeline production class.
     """
 
     def __init__(self):
-        self.sd_generator = None
-        self.cgan_generator = None
-        self.embedder = None
+        self.pipeline = None
         self.gallery_images = []
 
     def initialize_system(self, engine_choice: str, model_choice: str, device_choice: str):
-        """Initialize the selected inference engine (SD or CGAN)."""
+        """Initialize the selected inference engine via core_pipeline."""
         try:
             device = "cuda" if torch.cuda.is_available() and "CPU" not in device_choice else "cpu"
+            
+            if not PIPELINE_AVAILABLE:
+                return "❌ core_pipeline.py module not found in environment root."
+                
+            self.pipeline = HybridGenerativePipeline(device=device)
 
             if engine_choice == "Custom CGAN (Shapes)":
-                if not CGAN_AVAILABLE:
-                    return "❌ Local CGAN modules (scripts/ models/) not found in environment root."
-                self.embedder = TextEmbedder(device=device)
-                self.cgan_generator = ConditionalGenerator(z_dim=100, embed_dim=512).to(device)
-                self.cgan_generator.eval()
-
-                if os.path.exists('cgan_generator.pth'):
-                    self.cgan_generator.load_state_dict(
-                        torch.load('cgan_generator.pth', map_location=device)
-                    )
-                    return "✅ Custom CGAN Initialized! (Loaded Trained Kaggle Weights from 'cgan_generator.pth')"
-
-                return "✅ Custom CGAN Initialized & Linked to Phase 2 NLP Pipeline!"
+                self.pipeline.load_cgan()
+                return "✅ Custom CGAN Pipeline Initialized (Text Tokenization + Cross-Attention GAN Linked)!"
             else:
-                # Stable Diffusion engine
                 model_map = {
                     "Stable Diffusion 1.5 (Recommended)": "runwayml/stable-diffusion-v1-5",
                     "DreamShaper 8 (Open Alternative)": "Lykon/dreamshaper-8",
@@ -334,70 +89,37 @@ class IntegratedGeneratorUI:
                 }
 
                 model_id = model_map.get(model_choice, "runwayml/stable-diffusion-v1-5")
-                self.sd_generator = StableDiffusionGenerator(model_id=model_id, device=device)
-
-                # Inject LoRA weights from Task 1 fine-tuning if available
-                if os.path.exists('lora_unet_weights'):
-                    self.sd_generator.pipe.load_lora_weights(
-                        'lora_unet_weights', weight_name='adapter_model.safetensors'
-                    )
-                    return "✅ Stable Diffusion loaded successfully with Custom Art Dataset LoRA Weights!"
-
-                return "✅ Stable Diffusion loaded successfully"
+                self.pipeline.load_stable_diffusion(model_id=model_id)
+                return "✅ Stable Diffusion Pipeline loaded successfully!"
 
         except Exception as e:
             return f"❌ Initialization failed: {str(e)}"
 
     def generate(self, engine, prompt, neg_prompt, width, height, steps, cfg, backend, seed, num_imgs):
-        """Route generation to the selected engine."""
-        if engine == "Custom CGAN (Shapes)":
-            if self.cgan_generator is None:
-                return None, "Initialize CGAN First", []
-
-            with torch.no_grad():
-                z = torch.randn(1, 100, 1, 1).to(
-                    self.cgan_generator.embed_proj[0].weight.device
-                )
-                emb = self.embedder.get_text_embeddings([prompt])
-                emb = emb.mean(dim=1).to(
-                    self.cgan_generator.embed_proj[0].weight.device
-                )
-
-                # Hardware dimension check — project if CLIP dim != CGAN embed_dim
-                if emb.size(1) != 512:
-                    emb = torch.randn(1, 512).to(emb.device)
-
-                fake = self.cgan_generator(z, emb)
-
-                # Format visually
-                rendered = ((fake[0].cpu().permute(1, 2, 0) + 1.0) / 2.0).clamp(0, 1)
-                final_img = (rendered.numpy() * 255).astype("uint8")
-                final_img = Image.fromarray(final_img).resize(
-                    (int(width), int(height)), Image.BICUBIC
-                )
-
-                self.gallery_images.append(final_img)
-                return final_img, f"CGAN Generative Pass Completed: {prompt}", self.gallery_images
-        else:
-            # Stable Diffusion engine
-            if self.sd_generator is None:
-                return None, "Initialize Stable Diffusion First", []
-            try:
-                images, metadata = self.sd_generator.generate_image(
-                    prompt=prompt,
-                    negative_prompt=neg_prompt,
-                    width=int(width),
-                    height=int(height),
-                    num_inference_steps=int(steps),
-                    guidance_scale=float(cfg),
-                    scheduler=backend,
-                    seed=int(seed) if seed != -1 else None,
-                    num_images=int(num_imgs)
-                )
-                self.gallery_images.extend(images)
-                return images[0], "SD Generation Complete", self.gallery_images
-            except Exception as e:
-                return None, str(e), []
+        """Route generation to the selected engine via core_pipeline."""
+        if self.pipeline is None:
+            return None, "❌ Initialize Pipeline First", []
+            
+        try:
+            # The core_pipeline hides all the architectural complexity and acts
+            # as a pure unified text-to-image API.
+            is_cgan = engine == "Custom CGAN (Shapes)"
+            engine_arg = "cgan" if is_cgan else "sd"
+            
+            final_img = self.pipeline.generate(
+                prompt=prompt,
+                engine=engine_arg,
+                width=int(width),
+                height=int(height),
+                steps=int(steps),
+                cfg=float(cfg)
+            )
+            
+            self.gallery_images.append(final_img)
+            return final_img, f"✅ Generation Completed: {prompt}", self.gallery_images
+            
+        except Exception as e:
+            return None, f"❌ Error: {str(e)}", []
 
     def create_interface(self):
         """Build the unified Gradio Blocks interface."""

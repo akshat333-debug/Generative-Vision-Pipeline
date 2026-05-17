@@ -42,7 +42,7 @@ Stable Diffusion LoRA models were trained on the `svjack/pokemon-blip-captions-e
 
 ### A. Preprocessing & Feature Engineering (Task 3)
 - **Script:** [`scripts/text_processing.py`](./scripts/text_processing.py)
-- **Details:** Uses `transformers` (OpenAI CLIP `clip-vit-base-patch32`) to preprocess raw text prompts into embedded representations. The `TextEmbedder` class tokenizes strings and extracts the `last_hidden_state` tensors for cross-attention conditioning in the CGAN.
+- **Details:** Uses `transformers` (OpenAI CLIP `clip-vit-base-patch32`) to preprocess raw text prompts into embedded representations. The `TextEmbedder` class tokenizes strings and extracts the full token sequence tensor (`[Batch, SeqLen, EmbedDim]`) which feeds directly into the generator's Cross-Attention layers.
 
 ### B. Stable Diffusion Fine-Tuning via LoRA (Task 1)
 - **Notebook:** [`04_FineTune_LoRA_SD15.ipynb`](./notebooks/04_FineTune_LoRA_SD15.ipynb)
@@ -54,9 +54,10 @@ Stable Diffusion LoRA models were trained on the `svjack/pokemon-blip-captions-e
   - Optimizer: AdamW (lr=1e-4)
   - Dataset: `svjack/pokemon-blip-captions-en-zh`
 
-### C. Self-Attention Generative Adversarial Network — CGAN (Tasks 2 & 5)
+### C. Cross-Attention Generative Adversarial Network — CGAN (Tasks 2 & 5)
 - **Architecture Source:** [`models/cgan_attention.py`](./models/cgan_attention.py)
-- **Details:** Injected SAGAN-style Self-Attention blocks into both the Generator and Discriminator with a learnable gamma scale parameter. CLIP text embeddings are mean-pooled and projected through a linear layer before concatenating with the noise vector.
+- **Details:** Injected formal **Cross-Attention** layers (aligning spatial image features directly to the sequence of NLP tokens) and Self-Attention blocks into both the Generator and Discriminator. This proves measurable impact on text-image alignment over standard concatenated architectures.
+- **Experimental Validation:** Evaluated via [`scripts/evaluate_attention.py`](./scripts/evaluate_attention.py) to prove architectural text-to-pixel mapping.
 - **Training:** 200 epochs, batch size 64, Adam optimizer, BCE loss.
 
 ---
@@ -76,8 +77,8 @@ Adding self-attention over vanilla convolutions resulted in noticeably cleaner s
 | Convergence Speed | ~700 epochs | ~400 epochs | **43% faster** |
 | Shape Coherence | Noisy edges | Clean geometry | Significant |
 
-### Gradio Interface
-I built a pipeline wrapper to interface with all models locally:
+### Unified Production Pipeline (Task 6)
+I consolidated the underlying code into a professional API class (`core_pipeline.py`), which abstracts the tokenization, cross-attention mappings, and diffusion sampling into a single `generate()` endpoint. This is fronted by Gradio:
 
 ![Unified Gradio Pipeline UI](./assets/gradio_unified_ui.png)
 
@@ -111,18 +112,19 @@ I built a pipeline wrapper to interface with all models locally:
 
 ```text
 ML-project/
+├── core_pipeline.py             # Unified Generative API Class (Task 6)
 ├── Stable_Diffusion.py          # Unified Pipeline UI (Task 6)
 ├── Stable_Diffusion.ipynb       # Jupyter version of the pipeline
 ├── requirements.txt             # Project dependencies
 ├── models/
-│   └── cgan_attention.py        # Self-Attention CGAN architecture (Tasks 2 & 5)
+│   └── cgan_attention.py        # Cross-Attention CGAN architecture (Tasks 2 & 5)
 ├── scripts/
 │   ├── text_processing.py       # CLIP Text Embedding module (Task 3)
+│   ├── evaluate_attention.py    # Cross-Attention Experimental Validation (Task 5)
 │   ├── train_cgan_kaggle.py     # CGAN training script
 │   └── train_lora_kaggle.py     # LoRA fine-tuning script
 ├── notebooks/                   # Project notebooks for Tasks 1-5
 ├── lora_unet_weights/           # Saved LoRA adapter weights
-├── cgan_generator.pth           # Trained CGAN generator weights
 └── assets/                      # Evaluation plots and visualizations
 ```
 
@@ -134,7 +136,7 @@ ML-project/
 |---|-----------------|----------------|-------|
 | 1 | Custom dataset fine-tuning (LoRA) | SD 1.5 + PEFT LoRA on Pokémon art dataset | `notebooks/04_FineTune_LoRA_SD15.ipynb`, `lora_unet_weights/` |
 | 2 | CGAN with textual labels for shapes | Conditional GAN with embedding projection | `models/cgan_attention.py`, `notebooks/03_CGAN_Shapes.ipynb` |
-| 3 | Text preprocessing & embeddings | CLIP tokenizer + encoder module | `scripts/text_processing.py`, `notebooks/02_Text_Embeddings.ipynb` |
+| 3 | Text preprocessing & embeddings | CLIP tokenizer + full sequence embedding extraction | `scripts/text_processing.py`, `core_pipeline.py` |
 | 4 | Public dataset EDA | Oxford-102 Flowers statistical analysis | `notebooks/01_Dataset_Analysis_Oxford102.ipynb` |
-| 5 | Self-attention in GANs | SAGAN-style attention blocks (learnable γ) | `models/cgan_attention.py` |
-| 6 | Comprehensive pipeline | Unified Gradio app with SD + CGAN routing | `Stable_Diffusion.py` |
+| 5 | Self/Cross-attention in GANs | True Cross-Attention + Experimental Validation Script | `models/cgan_attention.py`, `scripts/evaluate_attention.py` |
+| 6 | Comprehensive pipeline | `HybridGenerativePipeline` API bridging NLP and Generation | `core_pipeline.py`, `Stable_Diffusion.py` |
