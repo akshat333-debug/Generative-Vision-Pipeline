@@ -164,7 +164,7 @@ def generate_samples(netG, label_embeddings, labels, epoch, device, save_dir="sa
 
     with torch.no_grad():
         for row, (label_idx, label_name) in enumerate(zip(range(3), labels)):
-            emb = label_embeddings[label_idx].unsqueeze(0).repeat(6, 1).to(device)
+            emb = label_embeddings[label_idx].unsqueeze(0).repeat(6, 1, 1).to(device)
             noise = torch.randn(6, Z_DIM, 1, 1, device=device)
             fake = netG(noise, emb)
 
