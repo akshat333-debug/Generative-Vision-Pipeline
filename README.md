@@ -1,6 +1,6 @@
 # Imgen: Deep Generative Image Pipeline
 
-[![GitHub repo](https://img.shields.io/badge/GitHub-Repo-blue?logo=github)](https://github.com/akshat333-debug/ML-project)
+[![GitHub repo](https://img.shields.io/badge/GitHub-Repo-blue?logo=github)](https://github.com/akshat333-debug/Generative-Vision-Pipeline)
 [![Python & PyTorch](https://img.shields.io/badge/Framework-PyTorch%20%7C%20Diffusers-red)](https://pytorch.org/)
 
 Imgen is an end-to-end Text-to-Image Generation and Conditional GAN rendering pipeline developed as part of an ML internship project. 
@@ -88,7 +88,7 @@ I consolidated the underlying code into a professional API class (`core_pipeline
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/akshat333-debug/ML-project.git
+   git clone https://github.com/akshat333-debug/Generative-Vision-Pipeline.git
    cd ML-project
    ```
 
