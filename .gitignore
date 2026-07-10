@@ -33,3 +33,5 @@ Thumbs.db
 # Large model files (uncomment to exclude from git)
 # *.pth
 # *.safetensors
+
+.gradio/
